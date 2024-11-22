@@ -11,6 +11,7 @@ import wasm from 'vite-plugin-wasm'
 
 export default defineConfig({
   base: '/tool/',
+  build: { target: 'esnext' },
   resolve: {
     alias: {
       '~/': `${path.resolve(__dirname, 'src')}/`,
