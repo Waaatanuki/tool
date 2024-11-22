@@ -1,42 +1,18 @@
-<script setup lang="ts" generic="T extends any, O extends any">
-defineOptions({
-  name: 'IndexPage',
-})
-
-const name = ref('')
+<script setup lang="ts">
+const menu = ref([
+  { name: '利率', path: 'money', icon: 'ri:money-cny-circle-fill' },
+])
 
 const router = useRouter()
-function go() {
-  if (name.value)
-    router.push(`/hi/${encodeURIComponent(name.value)}`)
+function go(path: string) {
+  router.push(`/${path}`)
 }
 </script>
 
 <template>
-  <div>
-    <div i-carbon-campsite inline-block text-4xl />
-    <p>
-      <a rel="noreferrer" href="https://github.com/antfu-collective/vitesse-lite" target="_blank">
-        Vitesse Lite
-      </a>
-    </p>
-    <p>
-      <em text-sm op75>Opinionated Vite Starter Template</em>
-    </p>
-
-    <div py-4 />
-
-    <TheInput
-      v-model="name"
-      placeholder="What's your name?"
-      autocomplete="false"
-      @keydown.enter="go"
-    />
-
-    <div>
-      <TheButton m-3 :disabled="!name" @click="go">
-        Go
-      </TheButton>
+  <div m-auto max-w-600px border-1 p-5>
+    <div v-for="m in menu" :key="m.path" h-10 w-10 fc cursor-pointer hover="ring-1" @click="go(m.path)">
+      <Icon :icon="m.icon" width="50" />
     </div>
   </div>
 </template>
