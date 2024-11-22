@@ -1,7 +1,8 @@
 <script setup lang="ts">
 const menu = ref([
   { name: '利率', path: 'money', icon: 'ri:money-cny-circle-fill' },
-  { name: '事件', path: 'time', icon: 'mdi:clock' },
+  { name: '时间', path: 'time', icon: 'mdi:clock' },
+  { name: 'JSON', path: 'format', icon: 'lucide:file-json' },
 ])
 
 const router = useRouter()

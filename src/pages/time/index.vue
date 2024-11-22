@@ -20,9 +20,6 @@ const dayDiff = computed(() => {
 
   return dayjs(dateRange.value[1]).diff(dayjs(dateRange.value[0]), 'day')
 })
-
-onMounted(() => {
-})
 </script>
 
 <template>
