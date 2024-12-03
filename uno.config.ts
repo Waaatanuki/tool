@@ -3,6 +3,7 @@ import {
   presetAttributify,
   presetIcons,
   presetUno,
+  transformerDirectives,
 } from 'unocss'
 
 export default defineConfig({
@@ -18,5 +19,8 @@ export default defineConfig({
       scale: 1.2,
       warn: true,
     }),
+  ],
+  transformers: [
+    transformerDirectives(),
   ],
 })

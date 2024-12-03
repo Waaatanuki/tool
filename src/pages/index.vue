@@ -3,6 +3,7 @@ const menu = ref([
   { name: '利率', path: 'money', icon: 'ri:money-cny-circle-fill' },
   { name: '时间', path: 'time', icon: 'mdi:clock' },
   { name: 'JSON', path: 'format', icon: 'lucide:file-json' },
+  { name: '画板', path: 'whiteboard', icon: 'fluent:whiteboard-48-filled' },
 ])
 
 const router = useRouter()
@@ -17,4 +18,5 @@ function go(path: string) {
       <Icon :icon="m.icon" width="50" />
     </div>
   </div>
+  <TheFooter />
 </template>

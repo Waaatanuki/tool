@@ -17,6 +17,9 @@ importers:
       dayjs:
         specifier: ^1.11.13
         version: 1.11.13
+      drauu:
+        specifier: ^0.4.2
+        version: 0.4.2
       element-plus:
         specifier: ^2.8.8
         version: 2.8.8(vue@3.5.13(typescript@5.6.3))
@@ -197,6 +200,9 @@ packages:
 
   '@dprint/toml@0.6.2':
     resolution: {integrity: sha512-Mk5unEANsL/L+WHYU3NpDXt1ARU5bNU5k5OZELxaJodDycKG6RoRnSlZXpW6+7UN2PSnETAFVUdKrh937ZwtHA==}
+
+  '@drauu/core@0.4.2':
+    resolution: {integrity: sha512-kb2DdE8E+5CHESd9887yYFqa1MBSWQeu64qS9/oW70yLSXJS+XCt/QWBcSRzY2mWd6TVugyuq/wRnTNOx5c1/g==}
 
   '@element-plus/icons-vue@2.3.1':
     resolution: {integrity: sha512-XxVUZv48RZAd87ucGS48jPf6pKu0yV5UCg9f4FFwtrYxXOwWuVJo6wOvSLKEoMQKjv8GsX/mhP6UsC1lRwbUWg==}
@@ -1348,6 +1354,9 @@ packages:
   doctrine@3.0.0:
     resolution: {integrity: sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==}
     engines: {node: '>=6.0.0'}
+
+  drauu@0.4.2:
+    resolution: {integrity: sha512-wujr8c13hxnpmC/8wh1Ck9+bq9q3svUWBvVxoQUiwNVE4RaeSHbGxfZURwbnoc+5MSKyJyr4mZeUF0bza8MiZQ==}
 
   duplexer@0.1.2:
     resolution: {integrity: sha512-jtD6YG370ZCIi/9GTaJKQxWTZD045+4R4hTk/x1UyoqadyJ9x9CgSi1RlVDQF8U2sxLLSnFkCaMihqljHIWgMg==}
@@ -3047,6 +3056,8 @@ snapshots:
 
   '@dprint/toml@0.6.2': {}
 
+  '@drauu/core@0.4.2': {}
+
   '@element-plus/icons-vue@2.3.1(vue@3.5.13(typescript@5.6.3))':
     dependencies:
       vue: 3.5.13(typescript@5.6.3)
@@ -4195,6 +4206,10 @@ snapshots:
   doctrine@3.0.0:
     dependencies:
       esutils: 2.0.3
+
+  drauu@0.4.2:
+    dependencies:
+      '@drauu/core': 0.4.2
 
   duplexer@0.1.2: {}
 

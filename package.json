@@ -12,6 +12,7 @@
     "@iconify/vue": "^4.1.2",
     "@vueuse/core": "^11.3.0",
     "dayjs": "^1.11.13",
+    "drauu": "^0.4.2",
     "element-plus": "^2.8.8",
     "json_typegen_wasm": "^0.7.0",
     "vue": "^3.5.13",
