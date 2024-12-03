@@ -4,6 +4,7 @@ const menu = ref([
   { name: '时间', path: 'time', icon: 'mdi:clock' },
   { name: 'JSON', path: 'format', icon: 'lucide:file-json' },
   { name: '画板', path: 'whiteboard', icon: 'fluent:whiteboard-48-filled' },
+  { name: '色彩', path: 'color', icon: 'ic:sharp-color-lens' },
 ])
 
 const router = useRouter()
