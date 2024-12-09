@@ -43,7 +43,8 @@ function handleChange(item: Item) {
 
 const current = ref({
   money: 0,
-  dateRange: '',
+  startDate: '',
+  endDate: new Date(),
   daily: 0,
   weekly: 0,
   monthly: 0,
@@ -51,10 +52,10 @@ const current = ref({
 })
 
 function handleCurrentChange() {
-  if (!current.value.dateRange)
+  if (!current.value.startDate)
     return
 
-  const dayDiff = dayjs(current.value.dateRange[1]).diff(dayjs(current.value.dateRange[0]), 'day')
+  const dayDiff = dayjs(current.value.endDate).diff(dayjs(current.value.startDate), 'day')
   current.value.daily = Number((current.value.money / dayDiff).toFixed(2))
   current.value.weekly = Number((current.value.daily * 7).toFixed(2))
   current.value.monthly = Number((current.value.daily * 30).toFixed(2))
@@ -68,9 +69,9 @@ onMounted(() => {
 
 <template>
   <div m-auto max-w-900px>
-    <div v-for="item, idx in list" :key="idx" mb-4>
-      <el-form :model="item" inline>
-        <el-form-item label="年化收益率范围">
+    <div v-for="item, idx in list" :key="idx" relative mb-8>
+      <el-form :model="item" inline label-position="top">
+        <el-form-item label="收益率范围">
           <el-input v-model="item.yieldRange" style="width: 100px;" @change="handleChange(item)">
             <template #suffix>
               天
@@ -78,35 +79,33 @@ onMounted(() => {
           </el-input>
         </el-form-item>
         <el-form-item label="收益率">
-          <el-input v-model="item.yieldRaito" style="width: 100px;" @change="handleChange(item)">
+          <el-input v-model="item.yieldRaito" style="width: 80px;" @change="handleChange(item)">
             <template #suffix>
               %
             </template>
           </el-input>
         </el-form-item>
         <el-form-item label="本金">
-          <el-input v-model="item.principal" style="width: 150px;" @change="handleChange(item)">
+          <el-input v-model="item.principal" style="width: 110px;" @change="handleChange(item)">
             <template #suffix>
               元
             </template>
           </el-input>
         </el-form-item>
 
-        <el-form-item label=" ">
-          <ItemRegulation :index="idx" :total="list.length" @add="handleAdd" @remove="handleRemove" />
-        </el-form-item>
+        <ItemRegulation absolute right--2 top--4 :index="idx" :total="list.length" @add="handleAdd" @remove="handleRemove" />
       </el-form>
-      <el-descriptions border :column="4" label-width="100">
-        <el-descriptions-item label="每天收益" width="100">
+      <el-descriptions border :column="4" label-width="100" direction="vertical">
+        <el-descriptions-item label="日收益" width="100">
           {{ item.daily }}
         </el-descriptions-item>
-        <el-descriptions-item label="每周收益" width="100">
+        <el-descriptions-item label="周收益" width="100">
           {{ item.weekly }}
         </el-descriptions-item>
-        <el-descriptions-item label="每月收益" width="100">
+        <el-descriptions-item label="月收益" width="100">
           {{ item.monthly }}
         </el-descriptions-item>
-        <el-descriptions-item label="每年收益" width="100">
+        <el-descriptions-item label="年收益" width="100">
           {{ item.yearly }}
         </el-descriptions-item>
       </el-descriptions>
@@ -120,21 +119,29 @@ onMounted(() => {
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item label="起止时间">
-          <el-date-picker v-model="current.dateRange" type="daterange" @change="handleCurrentChange" />
-        </el-form-item>
+        <div fc>
+          <el-form-item label=" ">
+            <el-date-picker v-model="current.startDate" type="date" style="width:150px" @change="handleCurrentChange" />
+          </el-form-item>
+          <span mb-18px mr-20px>
+            至
+          </span>
+          <el-form-item label=" ">
+            <el-date-picker v-model="current.endDate" type="date" style="width:150px" @change="handleCurrentChange" />
+          </el-form-item>
+        </div>
       </el-form>
-      <el-descriptions border :column="4" label-width="100">
-        <el-descriptions-item label="每天收益" width="100">
+      <el-descriptions border :column="4" label-width="100" direction="vertical">
+        <el-descriptions-item label="日收益" width="100">
           {{ current.daily }}
         </el-descriptions-item>
-        <el-descriptions-item label="每周收益" width="100">
+        <el-descriptions-item label="周收益" width="100">
           {{ current.weekly }}
         </el-descriptions-item>
-        <el-descriptions-item label="每月收益" width="100">
+        <el-descriptions-item label="月收益" width="100">
           {{ current.monthly }}
         </el-descriptions-item>
-        <el-descriptions-item label="每年收益" width="100">
+        <el-descriptions-item label="年收益" width="100">
           {{ current.yearly }}
         </el-descriptions-item>
       </el-descriptions>
