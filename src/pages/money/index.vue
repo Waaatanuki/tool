@@ -71,8 +71,8 @@ onMounted(() => {
   <div m-auto max-w-900px>
     <div v-for="item, idx in list" :key="idx" relative mb-8>
       <el-form :model="item" inline label-position="top">
-        <el-form-item label="收益率范围">
-          <el-input v-model="item.yieldRange" style="width: 100px;" @change="handleChange(item)">
+        <el-form-item label="范围">
+          <el-input v-model="item.yieldRange" style="width: 80px;" @change="handleChange(item)">
             <template #suffix>
               天
             </template>
@@ -86,7 +86,7 @@ onMounted(() => {
           </el-input>
         </el-form-item>
         <el-form-item label="本金">
-          <el-input v-model="item.principal" style="width: 110px;" @change="handleChange(item)">
+          <el-input v-model="item.principal" style="width: 100px;" @change="handleChange(item)">
             <template #suffix>
               元
             </template>
@@ -121,11 +121,8 @@ onMounted(() => {
         </el-form-item>
         <div fc>
           <el-form-item label=" ">
-            <el-date-picker v-model="current.startDate" type="date" style="width:150px" @change="handleCurrentChange" />
+            <el-date-picker v-model="current.startDate" type="date" placeholder="开始日期" style="width:150px" @change="handleCurrentChange" />
           </el-form-item>
-          <span mb-18px mr-20px>
-            至
-          </span>
           <el-form-item label=" ">
             <el-date-picker v-model="current.endDate" type="date" style="width:150px" @change="handleCurrentChange" />
           </el-form-item>
