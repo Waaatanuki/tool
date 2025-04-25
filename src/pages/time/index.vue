@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import dayjs from 'dayjs'
 
+const isSecond = ref(true)
+const { copy } = useClipboard()
 const currentTimestamp = useTimestamp({ offset: 0 })
-const timestamp = ref<string>()
+const showTimestamp = computed(() => isSecond.value ? Math.floor (currentTimestamp.value / 1000) : currentTimestamp.value)
 
+const timestamp = ref<string>()
 const timestampFormat = computed(() => {
   if (!timestamp.value)
     return ''
@@ -11,7 +14,13 @@ const timestampFormat = computed(() => {
 
   return dayjs(stamp).format('YYYY-MM-DD HH:mm:ss')
 })
+const dateTime = ref()
+const dateTimeFormat = computed(() => {
+  if (!dateTime.value)
+    return ''
 
+  return dayjs(dateTime.value).unix()
+})
 const dateRange = ref('')
 
 const dayDiff = computed(() => {
@@ -25,12 +34,20 @@ const dayDiff = computed(() => {
 <template>
   <div m-auto max-w-900px>
     <div m-auto w-150 flex flex-col items-start gap-2>
-      <div fc gap-2>
-        <div w-25 text-end>
+      <div m-auto fc flex-col>
+        <div text-lg>
           当前时间戳
         </div>
         <div>
-          {{ Math.floor (currentTimestamp / 1000) }}
+          {{ showTimestamp }}
+        </div>
+        <div>
+          <TheButton @click="isSecond = !isSecond">
+            切换单位
+          </TheButton>
+          <TheButton @click="copy(String(showTimestamp))">
+            复制
+          </TheButton>
         </div>
       </div>
       <div fc gap-2>
@@ -42,6 +59,17 @@ const dayDiff = computed(() => {
         </div>
         <div>
           {{ timestampFormat }}
+        </div>
+      </div>
+      <div fc gap-2>
+        <div w-25 text-end>
+          日期
+        </div>
+        <div>
+          <el-date-picker v-model="dateTime" type="datetime" />
+        </div>
+        <div>
+          {{ dateTimeFormat }}
         </div>
       </div>
       <div fc gap-2>
