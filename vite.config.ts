@@ -4,10 +4,10 @@ import UnoCSS from 'unocss/vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import { ElementPlusResolver, VantResolver } from 'unplugin-vue-components/resolvers'
 import Components from 'unplugin-vue-components/vite'
-import { VueRouterAutoImports } from 'unplugin-vue-router'
-import VueRouter from 'unplugin-vue-router/vite'
 import { defineConfig } from 'vite'
 import wasm from 'vite-plugin-wasm'
+import { VueRouterAutoImports } from 'vue-router/unplugin'
+import VueRouter from 'vue-router/vite'
 
 export default defineConfig({
   base: '/tool/',
@@ -19,7 +19,9 @@ export default defineConfig({
   },
   plugins: [
     Vue(),
-    VueRouter(),
+    VueRouter({
+      dts: 'src/route-map.d.ts',
+    }),
     AutoImport({
       imports: [
         'vue',
