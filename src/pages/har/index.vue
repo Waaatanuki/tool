@@ -341,7 +341,6 @@ function deleteEntry(id: string) {
         ? buildEntryId(nextEntries[removedIndex - 1], removedIndex - 1)
         : null
     selectedEntryId.value = nextId
-    activeTab.value = 'Headers'
   }
 }
 
@@ -591,7 +590,7 @@ function exportHar() {
             <div class="flex items-center justify-between pl-[48px] text-[11px] text-gray-500 dark:text-gray-400">
               <span class="truncate pr-2" :title="getHost(item.entry.request?.url)">{{ getHost(item.entry.request?.url) }}</span>
               <div class="flex shrink-0 gap-3">
-                <span>{{ formatSize(item.entry.response?.bodySize) }}</span>
+                <span>{{ formatSize(item.entry.response?.content?.size) }}</span>
                 <span>{{ formatTime(item.entry.time) }}</span>
               </div>
             </div>
