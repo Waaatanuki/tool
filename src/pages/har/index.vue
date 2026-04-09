@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-
 interface HarNameValuePair {
   name?: string
   value?: string
@@ -90,6 +88,7 @@ const fileName = ref('')
 const fileInput = ref<HTMLInputElement>()
 const errorMessage = ref('')
 const dragActive = ref(false)
+const dragDepth = ref(0)
 
 const selectedEntryId = ref<string | null>(null)
 const activeTab = ref('Headers')
@@ -224,13 +223,13 @@ function readFileText(file: File) {
 async function handleFile(file: File) {
   errorMessage.value = ''
   dragActive.value = false
+  dragDepth.value = 0
 
   try {
     const text = await readFileText(file)
     const parsed: unknown = JSON.parse(text)
 
     if (!validateHarData(parsed)) {
-      resetCurrentFile()
       errorMessage.value = 'HAR 文件无效：请确认包含正确的 log.entries 和请求字段'
       return
     }
@@ -242,29 +241,65 @@ async function handleFile(file: File) {
     activeTab.value = 'Headers'
   }
   catch (error) {
-    resetCurrentFile()
     errorMessage.value = error instanceof SyntaxError
       ? 'HAR 文件解析失败，请检查文件内容是否为有效 JSON'
       : 'HAR 文件读取失败，请重新选择文件后再试'
   }
 }
 
+function hasDraggedFiles(event: DragEvent) {
+  return Array.from(event.dataTransfer?.types ?? []).includes('Files')
+}
+
+function onDragEnter(event: DragEvent) {
+  if (!hasDraggedFiles(event))
+    return
+
+  event.preventDefault()
+  dragDepth.value += 1
+  dragActive.value = true
+}
+
 function onDrop(event: DragEvent) {
+  if (!hasDraggedFiles(event))
+    return
+
   event.preventDefault()
   dragActive.value = false
-  const file = event.dataTransfer?.files?.[0]
+  dragDepth.value = 0
+
+  const files = event.dataTransfer?.files
+  if (!files?.length)
+    return
+
+  if (files.length > 1) {
+    errorMessage.value = '一次只能导入一个 HAR 文件'
+    return
+  }
+
+  const file = files[0]
   if (file)
     void handleFile(file)
 }
 
 function onDragOver(event: DragEvent) {
+  if (!hasDraggedFiles(event))
+    return
+
   event.preventDefault()
   dragActive.value = true
+  if (event.dataTransfer)
+    event.dataTransfer.dropEffect = 'copy'
 }
 
 function onDragLeave(event: DragEvent) {
+  if (!hasDraggedFiles(event))
+    return
+
   event.preventDefault()
-  dragActive.value = false
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+  if (dragDepth.value === 0)
+    dragActive.value = false
 }
 
 function selectFile() {
@@ -347,7 +382,7 @@ function getPath(urlString?: string) {
     return 'Unknown'
   try {
     const url = new URL(urlString)
-    return url.pathname + url.search
+    return url.pathname.split('/').at(-1) || urlString
   }
   catch {
     return urlString.length > 60 ? `${urlString.slice(0, 60)}...` : urlString
@@ -439,17 +474,32 @@ function exportHar() {
 </script>
 
 <template>
-  <div class="m-auto h-[calc(100vh-64px)] max-h-screen max-w-[1600px] flex flex-col gap-4 bg-gray-50 p-4 text-gray-800 transition-colors dark:bg-dark-900 dark:text-gray-100">
+  <div
+    class="m relative m-auto h-[calc(100vh-80px)] max-w-[1600px] flex flex-col gap-4 bg-gray-50 p-4 text-gray-800 transition-colors dark:bg-dark-900 dark:text-gray-100"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
+    <div
+      v-if="harData && dragActive"
+      class="pointer-events-none absolute inset-4 z-20 flex items-center justify-center border-2 border-teal-500 rounded-lg border-dashed bg-teal-500/10 backdrop-blur-[1px]"
+    >
+      <div class="rounded-lg bg-white/90 px-6 py-4 text-center text-sm text-teal-700 font-medium shadow dark:bg-[#1a1a1c]/90 dark:text-teal-300">
+        <div class="text-base font-semibold">
+          释放鼠标以替换当前 HAR 文件
+        </div>
+        <div class="mt-1 text-xs text-teal-600/90 dark:text-teal-300/80">
+          当前内容会保留到新文件解析成功为止
+        </div>
+      </div>
+    </div>
+
     <!-- Header / Toolbar -->
     <div class="flex shrink-0 items-center justify-between">
-      <div>
-        <h1 class="text-2xl text-gray-900 font-bold dark:text-gray-100">
-          HAR Viewer
-        </h1>
-        <p v-if="!harData" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          专业网络请求查看与编辑工具
-        </p>
-      </div>
+      <h1 class="text-2xl text-gray-900 font-bold dark:text-gray-100">
+        HAR Viewer
+      </h1>
 
       <div class="flex gap-2">
         <button v-if="!harData" class="btn" @click="selectFile">
@@ -472,13 +522,10 @@ function exportHar() {
 
     <!-- Empty Dropzone -->
     <div
-      v-if="!harData && !errorMessage"
+      v-if="!harData"
       class="flex flex-1 flex-col cursor-pointer items-center justify-center border-2 rounded-lg border-dashed p-10 transition"
       :class="dragActive ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/10' : 'border-gray-300 dark:border-gray-700 hover:border-teal-500 dark:hover:border-teal-500'"
       @click="selectFile"
-      @drop="onDrop"
-      @dragover="onDragOver"
-      @dragleave="onDragLeave"
     >
       <Icon icon="mdi:upload" width="48" class="mb-4 text-gray-400 dark:text-gray-500" />
       <div class="text-lg text-gray-800 font-medium dark:text-gray-200">
@@ -490,9 +537,9 @@ function exportHar() {
     </div>
 
     <!-- Main Viewer Workspace -->
-    <div v-if="harData" class="flex flex-1 overflow-hidden border border-gray-200 rounded-lg bg-white shadow-sm dark:border-gray-700 dark:bg-[#1a1a1c]">
+    <div v-if="harData" class="flex flex-1 gap-2 overflow-hidden rounded-lg bg-white shadow-sm dark:bg-[#1a1a1c]">
       <!-- Left List -->
-      <div class="max-w-[500px] min-w-[320px] w-1/3 flex flex-col border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-[#1a1a1c]">
+      <div class="max-w-[500px] min-w-[320px] w-1/3 flex flex-col border-1 border-gray-200 bg-white dark:border-gray-700 dark:bg-[#1a1a1c]">
         <div class="flex shrink-0 flex-col gap-3 border-b border-gray-200 bg-gray-50 p-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-[#252529] dark:text-gray-400">
           <div class="flex items-center justify-between gap-3">
             <span class="truncate text-gray-800 font-medium dark:text-gray-200" :title="fileName">{{ fileName }}</span>
@@ -523,7 +570,7 @@ function exportHar() {
             v-for="item in displayEntries" :key="item.id"
             class="group relative cursor-pointer border-b border-gray-100 px-3 py-2.5 transition dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50"
             :class="selectedEntryId === item.id ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''"
-            @click="selectedEntryId = item.id; activeTab = 'Headers'"
+            @click="selectedEntryId = item.id;"
           >
             <div v-if="selectedEntryId === item.id" class="absolute bottom-0 left-0 top-0 w-1 bg-blue-500" />
 
@@ -560,36 +607,12 @@ function exportHar() {
       </div>
 
       <!-- Right Details -->
-      <div class="relative min-w-0 flex flex-1 flex-col overflow-hidden bg-white dark:bg-[#1e1e20]">
+      <div class="relative min-w-0 flex flex-1 flex-col overflow-hidden border-1 border-gray-200 bg-white dark:border-gray-700 dark:bg-[#1e1e20]">
         <div v-if="!selectedEntry" class="absolute inset-0 flex items-center justify-center text-gray-400 dark:text-gray-500">
           在左侧选择一个请求以查看详情
         </div>
 
         <div v-else class="h-full flex flex-col">
-          <!-- Details Header -->
-          <div class="shrink-0 border-b border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-[#1a1a1c]">
-            <div class="mb-3 flex flex-wrap items-center gap-3">
-              <span class="rounded bg-gray-100 px-2 py-1 text-xs font-bold dark:bg-gray-800 dark:text-gray-200" :class="getMethodClass(selectedEntry.entry.request?.method)">
-                {{ selectedEntry.entry.request?.method || 'UNKNOWN' }}
-              </span>
-              <span class="text-sm font-bold font-mono" :class="getStatusClass(selectedEntry.entry.response?.status)">
-                {{ selectedEntry.entry.response?.status || 'N/A' }} {{ selectedEntry.entry.response?.statusText }}
-              </span>
-              <span class="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                {{ formatTime(selectedEntry.entry.time) }}
-              </span>
-              <span class="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                {{ formatSize(selectedEntry.entry.response?.content?.size ?? selectedEntry.entry.response?.bodySize) }}
-              </span>
-              <span class="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                {{ getContentTypeLabel(selectedEntry.entry.response?.content?.mimeType) }}
-              </span>
-            </div>
-            <div class="select-all break-all text-sm text-gray-700 font-mono dark:text-gray-300">
-              {{ selectedEntry.entry.request?.url }}
-            </div>
-          </div>
-
           <!-- Custom Tabs for better dark mode compatibility -->
           <div class="flex shrink-0 gap-1 border-b border-gray-200 bg-gray-50 px-2 pt-2 dark:border-gray-700 dark:bg-[#1a1a1c]">
             <button
@@ -612,7 +635,7 @@ function exportHar() {
                     <h3 class="mb-3 border-b border-gray-100 pb-1 text-gray-800 font-bold dark:border-gray-800 dark:text-gray-200">
                       General
                     </h3>
-                    <div class="grid grid-cols-[140px_1fr] gap-2 text-left text-sm">
+                    <div class="grid grid-cols-[250px_1fr] gap-2 px-2 py-1.5 text-left text-sm">
                       <div class="text-gray-500 dark:text-gray-400">
                         Request URL:
                       </div>
@@ -643,7 +666,7 @@ function exportHar() {
                     </div>
                     <div class="text-left text-sm space-y-2">
                       <template v-for="(h, i) in selectedEntry.entry.response?.headers" :key="i">
-                        <div class="grid grid-cols-[180px_1fr] items-start gap-3 border border-transparent rounded-md px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-[#222226]">
+                        <div class="grid grid-cols-[250px_1fr] items-start gap-3 border border-transparent rounded-md px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-[#222226]">
                           <div class="break-all text-left text-gray-600 font-medium dark:text-gray-400">
                             {{ h.name }}:
                           </div>
@@ -664,7 +687,7 @@ function exportHar() {
                     </div>
                     <div class="text-left text-sm space-y-2">
                       <template v-for="(h, i) in selectedEntry.entry.request?.headers" :key="i">
-                        <div class="grid grid-cols-[180px_1fr] items-start gap-3 border border-transparent rounded-md px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-[#222226]">
+                        <div class="grid grid-cols-[250px_1fr] items-start gap-3 border border-transparent rounded-md px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-[#222226]">
                           <div class="break-all text-left text-gray-600 font-medium dark:text-gray-400">
                             {{ h.name }}:
                           </div>
