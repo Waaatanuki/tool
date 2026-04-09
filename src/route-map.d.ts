@@ -55,6 +55,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/format/components/JsonNode': RouteRecordInfo<
+      '/format/components/JsonNode',
+      '/format/components/JsonNode',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/har/': RouteRecordInfo<
       '/har/',
       '/har',
@@ -124,6 +131,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/format/index.vue': {
       routes:
         | '/format/'
+      views:
+        | never
+    }
+    'src/pages/format/components/JsonNode.vue': {
+      routes:
+        | '/format/components/JsonNode'
       views:
         | never
     }
