@@ -1,3 +1,7 @@
+html:root {
+  --el-color-primary: rgb(13 148 136);
+}
+
 html,
 body,
 #app {

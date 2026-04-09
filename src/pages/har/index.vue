@@ -127,15 +127,29 @@ function buildEntryId(entry: HarEntry, index: number) {
   ].join('::')
 }
 
-function resetCurrentFile() {
-  harData.value = null
-  fileName.value = ''
-  errorMessage.value = ''
-  dragActive.value = false
-  selectedEntryId.value = null
+function delCurrentEntries() {
+  if (!harData.value)
+    return
+
+  const idsToRemove = new Set(displayEntries.value.map(item => item.id))
+  if (idsToRemove.size === 0)
+    return
+
+  const currentEntries = (harData.value.log.entries ?? []).map((entry, index) => ({
+    id: buildEntryId(entry, index),
+    entry,
+  }))
+  const nextEntries = currentEntries
+    .filter(item => !idsToRemove.has(item.id))
+    .map(item => item.entry)
+
+  harData.value.log.entries = nextEntries
+
   keyword.value = ''
-  if (fileInput.value)
-    fileInput.value.value = ''
+  if (nextEntries.length !== 0) {
+    selectedEntryId.value = buildEntryId(nextEntries[0], 0)
+    activeTab.value = 'Headers'
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -501,15 +515,12 @@ function exportHar() {
       </h1>
 
       <div class="flex gap-2">
-        <button v-if="!harData" class="btn" @click="selectFile">
-          选择文件
-        </button>
-        <button v-if="harData" class="btn !bg-slate-600 !text-white disabled:!bg-slate-500 hover:!bg-slate-700" @click="selectFile">
-          重新导入
-        </button>
-        <button class="btn disabled:!bg-gray-400 disabled:!text-gray-100 dark:disabled:!bg-gray-700" :disabled="!harData" @click="exportHar">
+        <el-button type="primary" @click="selectFile">
+          {{ harData ? '重新导入' : '选择文件' }}
+        </el-button>
+        <el-button :disabled="!harData" @click="exportHar">
           导出 HAR
-        </button>
+        </el-button>
       </div>
     </div>
 
@@ -541,24 +552,16 @@ function exportHar() {
       <div class="max-w-[500px] min-w-[320px] w-1/3 flex flex-col border-1 border-gray-200 bg-white dark:border-gray-700 dark:bg-[#1a1a1c]">
         <div class="flex shrink-0 flex-col gap-3 border-b border-gray-200 bg-gray-50 p-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-[#252529] dark:text-gray-400">
           <div class="flex items-center justify-between gap-3">
-            <span class="truncate text-gray-800 font-medium dark:text-gray-200" :title="fileName">{{ fileName }}</span>
+            <span class="truncate text-gray-800 font-medium dark:text-gray-200" :title="fileName">{{ formatFileName(fileName) }}</span>
             <div class="flex items-center gap-3">
               <span class="whitespace-nowrap">{{ displayEntries.length }} 项</span>
-              <button class="text-red-500 hover:text-red-600 dark:hover:text-red-400" title="关闭文件" @click="resetCurrentFile">
+              <button class="text-red-500 hover:text-red-600 dark:hover:text-red-400" title="删除当前结果" @click="delCurrentEntries">
                 <Icon icon="mdi:close-circle" width="18" />
               </button>
             </div>
           </div>
 
-          <div class="relative">
-            <Icon icon="mdi:magnify" width="16" class="--translate-y-1/2 absolute left-3 top-1/2 text-gray-400 dark:text-gray-500" />
-            <input
-              v-model="keyword"
-              type="text"
-              placeholder="搜索 URL / Method / Status"
-              class="w-full border border-gray-200 rounded-lg bg-white py-2 pl-9 pr-3 text-sm text-gray-700 outline-none transition dark:border-gray-700 focus:border-teal-500 dark:bg-[#1f1f22] dark:text-gray-200"
-            >
-          </div>
+          <el-input v-model="keyword" placeholder="搜索 URL / Method / Status" clearable />
         </div>
 
         <el-scrollbar>
@@ -575,7 +578,7 @@ function exportHar() {
 
             <div class="mb-1 flex items-start justify-between gap-2">
               <div class="flex items-center gap-2 overflow-hidden">
-                <span class="w-10 shrink-0 text-[11px] font-bold" :class="getMethodClass(item.entry.request?.method)">
+                <span class="w-14 shrink-0 text-[11px] font-bold" :class="getMethodClass(item.entry.request?.method)">
                   {{ item.entry.request?.method || 'N/A' }}
                 </span>
                 <span class="truncate text-sm text-gray-800 font-medium dark:text-gray-200" :title="item.entry.request?.url">
@@ -587,7 +590,7 @@ function exportHar() {
               </span>
             </div>
 
-            <div class="flex items-center justify-between pl-[48px] text-[11px] text-gray-500 dark:text-gray-400">
+            <div class="flex items-center justify-between pl-16 text-[11px] text-gray-500 dark:text-gray-400">
               <span class="truncate pr-2" :title="getHost(item.entry.request?.url)">{{ getHost(item.entry.request?.url) }}</span>
               <div class="flex shrink-0 gap-3">
                 <span>{{ formatSize(item.entry.response?.content?.size) }}</span>
