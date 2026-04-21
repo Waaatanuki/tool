@@ -469,6 +469,283 @@ function formatFileName(name: string) {
   return name.replace(/\.(har|json)$/i, '') || 'har-export'
 }
 
+interface MultipartPart {
+  index: number
+  name?: string
+  filename?: string
+  contentType: string
+  size: number
+  isFile: boolean
+  isText: boolean
+  isBinaryPlaceholder: boolean
+  /** body 是否为 latin1 二进制串（来源于 base64 解码）。false 表示是原生 Unicode 字符串。 */
+  isBinaryString: boolean
+  /** body 中含有 Unicode 替换符（U+FFFD），表示原始二进制字节在 HAR 导出时已被 UTF-8 解码破坏，不可恢复。 */
+  isCorrupted: boolean
+  textPreview?: string
+  /** 原始 body（latin1 二进制串或 Unicode 字符串），用于后续生成下载文件 */
+  body?: string
+  headers: Array<{ name: string, value: string }>
+}
+
+interface MultipartParseResult {
+  boundary: string
+  parts: MultipartPart[]
+  decodedFromBase64: boolean
+  hasBinaryPlaceholder: boolean
+  parseError?: string
+}
+
+function getBoundary(mimeType?: string) {
+  if (!mimeType)
+    return ''
+  const match = mimeType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)
+  return (match?.[1] ?? match?.[2] ?? '').trim()
+}
+
+function isMultipartForm(mimeType?: string) {
+  return !!mimeType && /^multipart\/form-data/i.test(mimeType.trim())
+}
+
+function looksLikeBase64(value: string) {
+  const cleaned = value.replace(/\s+/g, '')
+  if (cleaned.length === 0 || cleaned.length % 4 !== 0)
+    return false
+  return /^[A-Z0-9+/]+={0,2}$/i.test(cleaned)
+}
+
+function tryDecodeBase64(value: string): string | null {
+  try {
+    return atob(value.replace(/\s+/g, ''))
+  }
+  catch {
+    return null
+  }
+}
+
+function binaryStringToBytes(binary: string) {
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++)
+    bytes[i] = binary.charCodeAt(i) & 0xFF
+  return bytes
+}
+
+function decodeUtf8(binary: string) {
+  try {
+    return new TextDecoder('utf-8', { fatal: false }).decode(binaryStringToBytes(binary))
+  }
+  catch {
+    return binary
+  }
+}
+
+function isTextualContentType(contentType: string) {
+  if (!contentType)
+    return true
+  return /^(?:text\/|application\/(?:json|xml|javascript|x-www-form-urlencoded|graphql)|.*\+(?:json|xml))/i.test(contentType.trim())
+}
+
+function decodeRfc5987(value: string) {
+  // filename*=UTF-8''... support
+  const match = value.match(/^([^']*)'[^']*'(.+)$/)
+  if (!match)
+    return value
+  try {
+    return decodeURIComponent(match[2])
+  }
+  catch {
+    return match[2]
+  }
+}
+
+function parseMultipartBody(
+  text: string,
+  boundary: string,
+  params?: Array<Record<string, unknown>>,
+  binaryEncoded = false,
+): MultipartParseResult {
+  const result: MultipartParseResult = {
+    boundary,
+    parts: [],
+    decodedFromBase64: false,
+    hasBinaryPlaceholder: false,
+  }
+
+  if (!boundary) {
+    result.parseError = '未在 Content-Type 中找到 boundary'
+    return result
+  }
+
+  let raw = text ?? ''
+  let isBinaryString = false
+  const startsWithBoundary = raw.includes(`--${boundary}`)
+  if (binaryEncoded || (!startsWithBoundary && looksLikeBase64(raw))) {
+    const decoded = tryDecodeBase64(raw)
+    if (decoded != null && decoded.includes(`--${boundary}`)) {
+      raw = decoded
+      result.decodedFromBase64 = true
+      isBinaryString = true
+    }
+  }
+
+  if (!raw.includes(`--${boundary}`)) {
+    result.parseError = '未能在内容中定位到 multipart 边界'
+    return result
+  }
+
+  // Identify "(binary)" placeholder names from DevTools params
+  const placeholderNames = new Set<string>()
+  for (const p of params ?? []) {
+    const name = typeof p?.name === 'string' ? p.name : undefined
+    const value = typeof p?.value === 'string' ? p.value : undefined
+    if (name && value === '(binary)')
+      placeholderNames.add(name)
+  }
+
+  // Normalize: ensure leading CRLF/LF before first boundary so split works
+  let normalized = raw
+  if (normalized.startsWith(`--${boundary}`))
+    normalized = `\r\n${normalized}`
+  else if (normalized.startsWith(`\n--${boundary}`))
+    normalized = `\r${normalized}`
+
+  const useCrlf = normalized.includes(`\r\n--${boundary}`)
+  const delimiter = useCrlf ? `\r\n--${boundary}` : `\n--${boundary}`
+  const headerSep = useCrlf ? '\r\n\r\n' : '\n\n'
+  const lineSep = useCrlf ? '\r\n' : '\n'
+
+  const segments = normalized.split(delimiter)
+  // segments[0] is preamble, last is closing `--\r\n`
+  let partIndex = 0
+  for (let i = 1; i < segments.length; i++) {
+    let seg = segments[i]
+    if (seg.startsWith('--'))
+      break
+    if (seg.startsWith(lineSep))
+      seg = seg.slice(lineSep.length)
+
+    const sepIdx = seg.indexOf(headerSep)
+    if (sepIdx < 0)
+      continue
+
+    const headerBlock = seg.slice(0, sepIdx)
+    let body = seg.slice(sepIdx + headerSep.length)
+    // The split delimiter consumed leading CRLF before next boundary; nothing to trim from body tail
+    // But normalize a possible single trailing CR for LF-only files
+    if (!useCrlf && body.endsWith('\r'))
+      body = body.slice(0, -1)
+
+    const headers: Array<{ name: string, value: string }> = []
+    let name: string | undefined
+    let filename: string | undefined
+    let contentType = ''
+
+    for (const line of headerBlock.split(lineSep)) {
+      const idx = line.indexOf(':')
+      if (idx < 0)
+        continue
+      const headerName = line.slice(0, idx).trim()
+      const headerValue = line.slice(idx + 1).trim()
+      headers.push({ name: headerName, value: headerValue })
+
+      const lower = headerName.toLowerCase()
+      if (lower === 'content-disposition') {
+        const nameMatch = headerValue.match(/name="([^"]*)"|name=([^;]+)/i)
+        if (nameMatch)
+          name = (nameMatch[1] ?? nameMatch[2] ?? '').trim()
+        const filenameStarMatch = headerValue.match(/filename\*=([^;]+)/i)
+        const filenameMatch = headerValue.match(/filename="([^"]*)"|filename=([^;]+)/i)
+        if (filenameStarMatch)
+          filename = decodeRfc5987(filenameStarMatch[1].trim())
+        else if (filenameMatch)
+          filename = (filenameMatch[1] ?? filenameMatch[2] ?? '').trim()
+      }
+      else if (lower === 'content-type') {
+        contentType = headerValue
+      }
+    }
+
+    const isFile = filename !== undefined
+    if (!contentType)
+      contentType = isFile ? 'application/octet-stream' : 'text/plain'
+
+    const isBinaryPlaceholder = isFile && body.length === 0 && !!name && placeholderNames.has(name)
+    if (isBinaryPlaceholder)
+      result.hasBinaryPlaceholder = true
+
+    const treatAsText = !isFile || isTextualContentType(contentType)
+    // 检测二进制数据是否已在 HAR 导出阶段被破坏：
+    // Chrome 导出未标记 _postDataBinaryEncoded 的 multipart 二进制 body 时，
+    // 会按 UTF-8 解码原始字节，非法序列被替换为 U+FFFD，信息不可恢复。
+    const isCorrupted = !isBinaryString && isFile && !isTextualContentType(contentType) && body.includes('\uFFFD')
+
+    let textPreview: string | undefined
+    if (treatAsText) {
+      const previewSource = body.length > 200000 ? `${body.slice(0, 200000)}\n... [已截断]` : body
+      // 仅在 body 来自 base64 解码（latin1 二进制串）时按 UTF-8 重新解码，
+      // 否则 body 已经是 Unicode 字符串，直接展示，避免中文被二次解码导致乱码。
+      textPreview = isBinaryString ? decodeUtf8(previewSource) : previewSource
+    }
+
+    // size 用字节数表示更准确：Unicode 字符串需先按 UTF-8 编码计算字节长度
+    const byteSize = isBinaryString
+      ? body.length
+      : new Blob([body]).size
+
+    result.parts.push({
+      index: partIndex++,
+      name,
+      filename,
+      contentType,
+      size: byteSize,
+      isFile,
+      isText: treatAsText,
+      isBinaryPlaceholder,
+      isBinaryString,
+      isCorrupted,
+      textPreview,
+      body: !isBinaryPlaceholder ? body : undefined,
+      headers,
+    })
+  }
+
+  return result
+}
+
+function downloadMultipartPart(part: MultipartPart) {
+  if (part.body === undefined) {
+    ElMessage.warning('该字段没有可下载的数据')
+    return
+  }
+  if (part.isCorrupted) {
+    ElMessage.warning('该文件在 HAR 导出时已被破坏（二进制字节被 UTF-8 解码替换），无法还原原文件')
+    return
+  }
+  // 二进制串（base64 解码而来）按字节直接还原；
+  // 普通 Unicode 字符串则按 UTF-8 编码生成字节，避免多字节字符被截断导致文件损坏。
+  const bytes = part.isBinaryString
+    ? binaryStringToBytes(part.body)
+    : new TextEncoder().encode(part.body)
+  const blob = new Blob([bytes as BlobPart], { type: part.contentType || 'application/octet-stream' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = part.filename || part.name || `part-${part.index + 1}`
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  URL.revokeObjectURL(url)
+}
+
+const multipartParseResult = computed<MultipartParseResult | null>(() => {
+  const postData = selectedEntry.value?.entry.request?.postData
+  if (!postData || !isMultipartForm(postData.mimeType))
+    return null
+  const boundary = getBoundary(postData.mimeType)
+  const binaryEncoded = (postData as { _postDataBinaryEncoded?: boolean })._postDataBinaryEncoded === true
+  return parseMultipartBody(postData.text ?? '', boundary, postData.params, binaryEncoded)
+})
+
 function exportHar() {
   if (!harData.value)
     return
@@ -732,7 +1009,108 @@ function exportHar() {
                     <div class="mb-2 text-sm text-gray-500 dark:text-gray-400">
                       MIME: {{ selectedEntry.entry.request.postData.mimeType || 'unknown' }}
                     </div>
-                    <pre class="whitespace-pre-wrap break-all border border-gray-200 rounded bg-gray-50 p-3 text-left text-sm text-gray-800 leading-6 dark:border-gray-800 dark:bg-[#141415] dark:text-gray-300">{{ isJsonLikeContent(selectedEntry.entry.request.postData.text) ? formatJsonContent(selectedEntry.entry.request.postData.text) : (selectedEntry.entry.request.postData.text || 'No payload body') }}</pre>
+
+                    <!-- Multipart/form-data 解析视图 -->
+                    <template v-if="multipartParseResult">
+                      <div v-if="multipartParseResult.parseError" class="border border-orange-200 rounded bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-800 dark:bg-orange-900/20 dark:text-orange-300">
+                        {{ multipartParseResult.parseError }}，已显示原始内容
+                      </div>
+                      <template v-else>
+                        <div class="mb-3 flex flex-wrap items-center gap-2 text-xs">
+                          <span class="rounded bg-gray-100 px-2 py-0.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                            boundary: {{ multipartParseResult.boundary }}
+                          </span>
+                          <span class="rounded bg-gray-100 px-2 py-0.5 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                            {{ multipartParseResult.parts.length }} parts
+                          </span>
+                          <span v-if="multipartParseResult.decodedFromBase64" class="rounded bg-blue-100 px-2 py-0.5 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                            已自动 Base64 解码
+                          </span>
+                          <span v-if="multipartParseResult.hasBinaryPlaceholder" class="rounded bg-yellow-100 px-2 py-0.5 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300">
+                            包含 (binary) 占位符（DevTools 未保存原始字节）
+                          </span>
+                        </div>
+
+                        <div class="space-y-3">
+                          <div
+                            v-for="part in multipartParseResult.parts"
+                            :key="part.index"
+                            class="border border-gray-200 rounded-md bg-gray-50 dark:border-gray-800 dark:bg-[#161618]"
+                          >
+                            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
+                              <div class="flex flex-wrap items-center gap-2 text-sm">
+                                <span class="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 font-mono dark:bg-blue-900/40 dark:text-blue-300">
+                                  #{{ part.index + 1 }}
+                                </span>
+                                <span class="text-gray-800 font-semibold dark:text-gray-200">
+                                  {{ part.name || '(unnamed)' }}
+                                </span>
+                                <span v-if="part.filename" class="break-all text-gray-600 dark:text-gray-400">
+                                  {{ part.filename }}
+                                </span>
+                                <span class="rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                  {{ getContentTypeLabel(part.contentType) }}
+                                </span>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">
+                                  {{ formatSize(part.size) }}
+                                </span>
+                                <span v-if="part.isBinaryPlaceholder" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300">
+                                  binary 占位
+                                </span>
+                                <span v-if="part.isCorrupted" class="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700 dark:bg-red-900/40 dark:text-red-300" title="HAR 导出时 Chrome 将二进制字节按 UTF-8 解码，原始文件已不可恢复">
+                                  已损坏
+                                </span>
+                              </div>
+                              <div class="flex items-center gap-2">
+                                <button
+                                  v-if="part.isFile && !part.isBinaryPlaceholder && part.body !== undefined"
+                                  class="flex items-center gap-1 border rounded bg-white px-2.5 py-1 text-xs transition dark:bg-[#1e1e20]"
+                                  :class="part.isCorrupted
+                                    ? 'border-red-300 text-red-600 cursor-not-allowed dark:border-red-700 dark:text-red-400 opacity-70'
+                                    : 'border-teal-300 text-teal-600 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-400 dark:hover:bg-teal-900/20'"
+                                  :title="part.isCorrupted ? 'HAR 导出时二进制已被破坏，无法下载原文件' : ''"
+                                  @click="downloadMultipartPart(part)"
+                                >
+                                  <Icon icon="mdi:download" width="14" />
+                                  下载文件
+                                </button>
+                                <button
+                                  v-if="part.isText && part.textPreview"
+                                  class="border border-gray-200 rounded bg-white px-2.5 py-1 text-xs text-gray-600 transition dark:border-gray-700 hover:border-teal-500 dark:bg-[#1e1e20] dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400"
+                                  @click="copyText(part.textPreview, '字段内容已复制')"
+                                >
+                                  复制
+                                </button>
+                              </div>
+                            </div>
+
+                            <div class="p-3">
+                              <template v-if="part.isBinaryPlaceholder">
+                                <div class="text-sm text-gray-500 italic dark:text-gray-400">
+                                  浏览器 DevTools 未保存原始二进制内容（标记为 (binary)）。请使用包含完整 base64 编码的 HAR 文件以获取下载能力。
+                                </div>
+                              </template>
+                              <template v-else-if="part.isFile && !part.isText">
+                                <div class="text-sm text-gray-500 dark:text-gray-400">
+                                  二进制文件 · {{ formatSize(part.size) }} · 点击右上角“下载文件”保存
+                                </div>
+                              </template>
+                              <template v-else-if="part.textPreview !== undefined">
+                                <pre class="whitespace-pre-wrap break-all rounded bg-white p-2 text-left text-sm text-gray-800 leading-6 dark:bg-[#141415] dark:text-gray-300">{{ isJsonLikeContent(part.textPreview) ? formatJsonContent(part.textPreview) : part.textPreview }}</pre>
+                              </template>
+                              <template v-else>
+                                <div class="text-sm text-gray-400 dark:text-gray-500">
+                                  (空)
+                                </div>
+                              </template>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+                    </template>
+
+                    <!-- 默认（非 multipart）payload 展示 -->
+                    <pre v-else class="whitespace-pre-wrap break-all border border-gray-200 rounded bg-gray-50 p-3 text-left text-sm text-gray-800 leading-6 dark:border-gray-800 dark:bg-[#141415] dark:text-gray-300">{{ isJsonLikeContent(selectedEntry.entry.request.postData.text) ? formatJsonContent(selectedEntry.entry.request.postData.text) : (selectedEntry.entry.request.postData.text || 'No payload body') }}</pre>
                   </section>
                 </template>
 
