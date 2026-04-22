@@ -62,6 +62,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/github/': RouteRecordInfo<
+      '/github/',
+      '/github',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/har/': RouteRecordInfo<
       '/har/',
       '/har',
@@ -137,6 +144,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/format/components/JsonNode.vue': {
       routes:
         | '/format/components/JsonNode'
+      views:
+        | never
+    }
+    'src/pages/github/index.vue': {
+      routes:
+        | '/github/'
       views:
         | never
     }

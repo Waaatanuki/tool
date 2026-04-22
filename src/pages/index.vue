@@ -6,6 +6,7 @@ const menu = ref([
   { name: 'HAR', desc: '网络请求抓包分析', path: 'har', icon: 'mdi:file-document-outline' },
   { name: '画板', desc: '轻量自由草图绘制', path: 'whiteboard', icon: 'fluent:whiteboard-48-filled' },
   { name: '色彩', desc: '颜色提取与转换', path: 'color', icon: 'ic:sharp-color-lens' },
+  { name: 'GitHub', desc: '单个文件与目录下载', path: 'github', icon: 'mdi:github' },
 ])
 
 const router = useRouter()
