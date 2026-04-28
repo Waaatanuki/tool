@@ -11,6 +11,7 @@
   "dependencies": {
     "@iconify/vue": "^5.0.0",
     "@vueuse/core": "^14.2.1",
+    "culori": "^4.0.2",
     "dayjs": "^1.11.20",
     "drauu": "^1.0.0",
     "element-plus": "^2.13.6",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@antfu/eslint-config": "^8.0.0",
     "@iconify-json/carbon": "^1.2.20",
+    "@types/culori": "^4.0.1",
     "@types/node": "^25.5.0",
     "@unocss/eslint-config": "^66.6.7",
     "@unocss/eslint-plugin": "^66.6.7",

@@ -1,21 +1,88 @@
 <script setup lang="ts">
+import type { Hsv, Oklch } from 'culori'
 import type { ColorPickerInstance } from 'element-plus'
 import { Icon } from '@iconify/vue'
+import { converter, formatHex, formatHex8, formatHsl, formatRgb, parse, parseOklch, round } from 'culori'
+
+interface ColorResult {
+  format: string
+  value: string
+}
+
+interface ParsedOklch {
+  alpha: number
+  parsed: Oklch
+  source: string
+}
 
 const picker = ref<ColorPickerInstance[]>()
 const color = ref('#409eff')
 const showAlpha = ref(false)
 
-const formatList: any[] = ['rgb', 'hex', 'hsl', 'hsv']
+const pickerFormatList = ['rgb', 'hex', 'hsl', 'hsv'] as const
+const toHsl = converter('hsl')
+const toHsv = converter('hsv')
+const roundColor = round(2)
 
-const res = computed(() =>
-  picker.value?.reduce<{ format: string, value: string }[]>((pre, cur) => {
+const parsedOklch = computed<ParsedOklch | null>(() => {
+  const source = color.value.trim()
+  const parsed = parseOklch(source) ?? parse(source)
+
+  if (!parsed || parsed.mode !== 'oklch')
+    return null
+
+  return {
+    alpha: typeof parsed.alpha === 'number' ? parsed.alpha : 1,
+    parsed,
+    source,
+  }
+})
+
+const res = computed<ColorResult[]>(() => {
+  if (parsedOklch.value)
+    return toOklchResults(parsedOklch.value)
+
+  return picker.value?.reduce<ColorResult[]>((pre, cur) => {
     pre.push({ format: cur.color.format.toUpperCase(), value: cur.color.value })
     return pre
-  }, []) || [],
-)
+  }, []) || []
+})
 
 const { copy, isSupported } = useClipboard()
+
+function normalizeHue(value: number) {
+  return ((value % 360) + 360) % 360
+}
+
+function formatHsv(color: Hsv) {
+  const roundedColor = roundColor(color)
+  const hue = normalizeHue(roundedColor.h ?? 0)
+  const saturation = (roundedColor.s ?? 0) * 100
+  const value = (roundedColor.v ?? 0) * 100
+
+  if ((roundedColor.alpha ?? 1) < 1)
+    return `hsva(${hue}, ${saturation}%, ${value}%, ${roundedColor.alpha})`
+
+  return `hsv(${hue}, ${saturation}%, ${value}%)`
+}
+
+function toOklchResults(color: ParsedOklch): ColorResult[] {
+  const hsl = toHsl(color.parsed)
+  const hsv = toHsv(color.parsed)
+
+  if (!hsl || !hsv)
+    return [{ format: 'OKLCH', value: color.source }]
+
+  const typedHsv: Hsv = hsv
+
+  return [
+    { format: 'OKLCH', value: color.source },
+    { format: 'RGB', value: formatRgb(color.parsed) },
+    { format: 'HEX', value: (color.alpha < 1 ? formatHex8(color.parsed) : formatHex(color.parsed)).toUpperCase() },
+    { format: 'HSL', value: formatHsl(roundColor(hsl)) },
+    { format: 'HSV', value: formatHsv(typedHsv) },
+  ]
+}
 
 async function handleCopy(str: string) {
   if (!str)
@@ -64,7 +131,7 @@ async function handleCopy(str: string) {
             <div class="absolute inset-0 z-0" :style="{ backgroundColor: color }" />
             <div class="pointer-events-none absolute opacity-0">
               <el-color-picker
-                v-for="format in formatList"
+                v-for="format in pickerFormatList"
                 :key="format"
                 ref="picker"
                 v-model="color"
@@ -76,7 +143,7 @@ async function handleCopy(str: string) {
 
           <div class="w-full flex items-center gap-4 px-4">
             <el-color-picker v-model="color" :show-alpha="showAlpha" size="large" />
-            <el-input v-model="color" placeholder="输入 HEX/RGB/HSL..." clearable size="large" class="flex-1" />
+            <el-input v-model="color" placeholder="输入 HEX/RGB/HSL/OKLCH..." clearable size="large" class="flex-1" />
           </div>
         </div>
       </el-card>
