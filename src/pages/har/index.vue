@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import VueJsonPretty from 'vue-json-pretty'
+import 'vue-json-pretty/lib/styles.css'
+
 interface HarNameValuePair {
   name?: string
   value?: string
@@ -1110,7 +1113,16 @@ function exportHar() {
                     </template>
 
                     <!-- 默认（非 multipart）payload 展示 -->
-                    <pre v-else class="whitespace-pre-wrap break-all border border-gray-200 rounded bg-gray-50 p-3 text-left text-sm text-gray-800 leading-6 dark:border-gray-800 dark:bg-[#141415] dark:text-gray-300">{{ isJsonLikeContent(selectedEntry.entry.request.postData.text) ? formatJsonContent(selectedEntry.entry.request.postData.text) : (selectedEntry.entry.request.postData.text || 'No payload body') }}</pre>
+                    <template v-else>
+                      <VueJsonPretty
+                        v-if="isJsonLikeContent(selectedEntry.entry.request.postData.text)"
+                        :data="JSON.parse(selectedEntry.entry.request.postData.text!)"
+                        theme="dark"
+                        show-icon
+                        virtual
+                      />
+                      <pre v-else class="whitespace-pre-wrap break-all border border-gray-200 rounded bg-gray-50 p-3 text-left text-sm text-gray-800 leading-6 dark:border-gray-800 dark:bg-[#141415] dark:text-gray-300">{{ (selectedEntry.entry.request.postData.text || 'No payload body') }}</pre>
+                    </template>
                   </section>
                 </template>
 
@@ -1132,7 +1144,14 @@ function exportHar() {
                       复制响应体
                     </button>
                   </div>
-                  <pre class="mt-3 min-h-40 whitespace-pre-wrap break-all border border-gray-200 rounded bg-gray-50 p-3 text-left text-sm text-gray-800 leading-6 dark:border-gray-800 dark:bg-[#141415] dark:text-gray-300">{{ isJsonLikeContent(selectedEntry.entry.response?.content?.text) ? formatJsonContent(selectedEntry.entry.response?.content?.text) : (selectedEntry.entry.response?.content?.text || 'No response content') }}</pre>
+                  <VueJsonPretty
+                    v-if="isJsonLikeContent(selectedEntry.entry.response?.content?.text)"
+                    :data="JSON.parse(selectedEntry.entry.response?.content?.text!)"
+                    theme="dark"
+                    show-icon
+                    virtual
+                  />
+                  <pre v-else class="mt-3 min-h-40 whitespace-pre-wrap break-all border border-gray-200 rounded bg-gray-50 p-3 text-left text-sm text-gray-800 leading-6 dark:border-gray-800 dark:bg-[#141415] dark:text-gray-300">{{ selectedEntry.entry.response?.content?.text || 'No response content' }}</pre>
                 </template>
 
                 <!-- Timing Tab -->
