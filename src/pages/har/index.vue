@@ -720,15 +720,18 @@ function downloadMultipartPart(part: MultipartPart) {
     ElMessage.warning('该字段没有可下载的数据')
     return
   }
+
   if (part.isCorrupted) {
-    ElMessage.warning('该文件在 HAR 导出时已被破坏（二进制字节被 UTF-8 解码替换），无法还原原文件')
+    ElMessage.warning('该文件在 HAR 导出时已损坏，无法恢复原文件')
     return
   }
-  // 二进制串（base64 解码而来）按字节直接还原；
-  // 普通 Unicode 字符串则按 UTF-8 编码生成字节，避免多字节字符被截断导致文件损坏。
+
   const bytes = part.isBinaryString
     ? binaryStringToBytes(part.body)
     : new TextEncoder().encode(part.body)
+
+  // 二进制串（base64 解码而来）按字节直接还原；
+  // 普通 Unicode 字符串则按 UTF-8 编码生成字节。
   const blob = new Blob([bytes as BlobPart], { type: part.contentType || 'application/octet-stream' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -1066,17 +1069,21 @@ function exportHar() {
                               </div>
                               <div class="flex items-center gap-2">
                                 <button
-                                  v-if="part.isFile && !part.isBinaryPlaceholder && part.body !== undefined"
-                                  class="flex items-center gap-1 border rounded bg-white px-2.5 py-1 text-xs transition dark:bg-[#1e1e20]"
-                                  :class="part.isCorrupted
-                                    ? 'border-red-300 text-red-600 cursor-not-allowed dark:border-red-700 dark:text-red-400 opacity-70'
-                                    : 'border-teal-300 text-teal-600 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-400 dark:hover:bg-teal-900/20'"
-                                  :title="part.isCorrupted ? 'HAR 导出时二进制已被破坏，无法下载原文件' : ''"
+                                  v-if="part.isFile && !part.isBinaryPlaceholder && part.body !== undefined && !part.isCorrupted"
+                                  class="flex items-center gap-1 border border-teal-300 rounded bg-white px-2.5 py-1 text-xs text-teal-600 transition dark:border-teal-700 dark:bg-[#1e1e20] hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-900/20"
                                   @click="downloadMultipartPart(part)"
                                 >
                                   <Icon icon="mdi:download" width="14" />
                                   下载文件
                                 </button>
+                                <span
+                                  v-else-if="part.isFile && !part.isBinaryPlaceholder && part.isCorrupted"
+                                  class="inline-flex items-center gap-1 border border-red-300 rounded bg-red-50 px-2.5 py-1 text-xs text-red-600 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400"
+                                  title="HAR 导出时二进制已被破坏，无法恢复原文件"
+                                >
+                                  <Icon icon="mdi:alert-circle-outline" width="14" />
+                                  文件已损坏
+                                </span>
                                 <button
                                   v-if="part.isText && part.textPreview"
                                   class="border border-gray-200 rounded bg-white px-2.5 py-1 text-xs text-gray-600 transition dark:border-gray-700 hover:border-teal-500 dark:bg-[#1e1e20] dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400"
@@ -1095,7 +1102,9 @@ function exportHar() {
                               </template>
                               <template v-else-if="part.isFile && !part.isText">
                                 <div class="text-sm text-gray-500 dark:text-gray-400">
-                                  二进制文件 · {{ formatSize(part.size) }} · 点击右上角“下载文件”保存
+                                  {{ part.isCorrupted
+                                    ? `二进制文件已在 HAR 导出时损坏 · ${formatSize(part.size)} · 当前 HAR 无法恢复原文件`
+                                    : `二进制文件 · ${formatSize(part.size)} · 点击右上角“下载文件”保存` }}
                                 </div>
                               </template>
                               <template v-else-if="part.textPreview !== undefined">
