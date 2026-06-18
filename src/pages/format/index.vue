@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import * as json_typegen_wasm from 'json_typegen_wasm'
+import JsonCompareEditor from '../../components/JsonCompareEditor.vue'
 import JsonNode from './components/JsonNode.vue'
 
-type CommandType = 'json' | 'ts'
+type CommandType = 'json' | 'diff' | 'ts'
 type JsonPrimitive = string | number | boolean | null
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 
@@ -13,8 +14,20 @@ interface OutputState {
   parsed?: JsonValue
 }
 
+interface DiffStats {
+  blocks: number
+  added: number
+  removed: number
+}
+
 const command = ref<CommandType>('json')
 const textarea = ref('')
+const compareTextarea = ref('')
+const diffStats = ref<DiffStats>({
+  blocks: 0,
+  added: 0,
+  removed: 0,
+})
 
 const { copy, isSupported } = useClipboard()
 const expandId = ref(0)
@@ -37,7 +50,7 @@ function parseJsonInput(input: string): JsonValue {
     return JSON.parse(parsed) as JsonValue
   }
   catch {
-    throw new Error('字符串中的内容不是合法 JSON，无法继续格式化')
+    return parsed
   }
 }
 
@@ -59,6 +72,14 @@ const outputState = computed<OutputState>(() => {
         text: JSON.stringify(parsed, null, 2),
         errorMessage: null,
         parsed,
+      }
+    }
+
+    if (command.value === 'diff') {
+      return {
+        ok: false,
+        text: '',
+        errorMessage: null,
       }
     }
 
@@ -86,8 +107,11 @@ const outputState = computed<OutputState>(() => {
   }
 })
 
+const activeResult = computed(() => command.value === 'diff' ? compareTextarea.value : outputState.value.text)
+
 async function handleCopy() {
-  if (!outputState.value.ok || !outputState.value.text)
+  const canCopy = command.value === 'diff' ? Boolean(compareTextarea.value) : outputState.value.ok
+  if (!canCopy || !activeResult.value)
     return
 
   if (!isSupported.value) {
@@ -96,7 +120,7 @@ async function handleCopy() {
   }
 
   try {
-    await copy(outputState.value.text)
+    await copy(activeResult.value)
     ElMessage.success('复制成功')
   }
   catch {
@@ -108,6 +132,8 @@ const inputHelperText = computed(() => {
   switch (command.value) {
     case 'json':
       return '请输入标准 JSON 或 JSON.stringify 后的字符串，系统会自动识别'
+    case 'diff':
+      return '左侧为基准 JSON，右侧为对比后的 JSON'
     case 'ts':
       return '请输入 JSON 自动推断并生成 TS 接口'
     default:
@@ -119,6 +145,8 @@ const inputPlaceholder = computed(() => {
   switch (command.value) {
     case 'json':
       return '在此粘贴标准 JSON 内容或 JSON.stringify 之后的字符串结果'
+    case 'diff':
+      return '在此粘贴基准 JSON'
     case 'ts':
       return '在此粘贴用于生成 TypeScript 类型的 JSON'
     default:
@@ -126,7 +154,7 @@ const inputPlaceholder = computed(() => {
   }
 })
 
-const result = computed(() => outputState.value.text)
+const result = computed(() => activeResult.value)
 const parsedJson = computed(() => outputState.value.parsed)
 const canRenderJsonTree = computed(() => command.value !== 'ts' && parsedJson.value !== undefined)
 const canExpandRoot = computed(() => parsedJson.value !== undefined && parsedJson.value !== null && typeof parsedJson.value === 'object')
@@ -134,6 +162,32 @@ const canExpandRoot = computed(() => parsedJson.value !== undefined && parsedJso
 function generateTsFromJson(input: string) {
   const parsed = parseJsonInput(input)
   return json_typegen_wasm.run('Root', JSON.stringify(parsed), JSON.stringify({ output_mode: 'typescript' }))
+}
+
+function formatJsonText(input: string) {
+  if (!input.trim())
+    return ''
+
+  return JSON.stringify(parseJsonInput(input), null, 2)
+}
+
+function formatDiffEditor(side: 'left' | 'right') {
+  const source = side === 'left' ? textarea.value : compareTextarea.value
+
+  try {
+    const formatted = formatJsonText(source)
+    if (side === 'left')
+      textarea.value = formatted
+    else
+      compareTextarea.value = formatted
+  }
+  catch {
+    ElMessage.error(side === 'left' ? '左侧不是合法 JSON' : '右侧不是合法 JSON')
+  }
+}
+
+function updateDiffStats(stats: DiffStats) {
+  diffStats.value = stats
 }
 </script>
 
@@ -146,15 +200,64 @@ function generateTsFromJson(input: string) {
           <el-radio-button value="json">
             JSON解析
           </el-radio-button>
+          <el-radio-button value="diff">
+            JSON对比
+          </el-radio-button>
           <el-radio-button value="ts">
             生成类型文件
           </el-radio-button>
         </el-radio-group>
+
+        <div v-if="command === 'diff'" class="flex flex-wrap items-center justify-center gap-2">
+          <el-tag size="small" type="info" effect="plain">
+            {{ diffStats.blocks }} 处差异
+          </el-tag>
+          <el-tag size="small" type="success" effect="plain">
+            +{{ diffStats.added }}
+          </el-tag>
+          <el-tag size="small" type="danger" effect="plain">
+            -{{ diffStats.removed }}
+          </el-tag>
+        </div>
       </div>
     </el-card>
 
+    <!-- 对比工作区 -->
+    <div v-if="command === 'diff'" class="flex flex-col gap-6">
+      <el-card shadow="hover" class="diff-editor-card rounded-xl" :body-style="{ padding: 0 }">
+        <template #header>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-gray-700 font-bold dark:text-gray-200">JSON 差异对比</span>
+              <el-tag size="small" type="info" effect="plain">
+                左右均可编辑
+              </el-tag>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <el-button size="small" @click="formatDiffEditor('left')">
+                格式化左侧
+              </el-button>
+              <el-button size="small" @click="formatDiffEditor('right')">
+                格式化右侧
+              </el-button>
+              <el-button size="small" type="primary" @click="handleCopy">
+                复制右侧
+              </el-button>
+            </div>
+          </div>
+        </template>
+
+        <JsonCompareEditor
+          v-model:left="textarea"
+          v-model:right="compareTextarea"
+          :dark="isDark"
+          @stats-change="updateDiffStats"
+        />
+      </el-card>
+    </div>
+
     <!-- 工作区 -->
-    <div class="flex flex-col gap-6 lg:flex-row">
+    <div v-else class="flex flex-col gap-6 lg:flex-row">
       <!-- 输入区 -->
       <el-card shadow="hover" class="flex-1 rounded-xl" :body-style="{ padding: 0 }">
         <template #header>
@@ -251,5 +354,9 @@ function generateTsFromJson(input: string) {
 
 .dark :deep(.custom-textarea .el-textarea__inner::-webkit-scrollbar-thumb) {
   background: #475569;
+}
+
+.diff-editor-card {
+  overflow: hidden;
 }
 </style>
