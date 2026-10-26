@@ -96,6 +96,8 @@ const dragDepth = ref(0)
 const selectedEntryId = ref<string | null>(null)
 const activeTab = ref('Headers')
 const keyword = ref('')
+const responsePreview = ref<HTMLElement>()
+const { height: responsePreviewHeight } = useElementSize(responsePreview)
 
 const displayEntries = computed<HarDisplayEntry[]>(() => {
   const entries = (harData.value?.log.entries ?? []).map((entry, index) => ({
@@ -897,7 +899,7 @@ function exportHar() {
           在左侧选择一个请求以查看详情
         </div>
 
-        <div v-else class="h-full flex flex-col">
+        <div v-else class="min-h-0 flex flex-1 flex-col">
           <!-- Custom Tabs for better dark mode compatibility -->
           <div class="flex shrink-0 gap-1 border-b border-gray-200 bg-gray-50 px-2 pt-2 dark:border-gray-700 dark:bg-[#1a1a1c]">
             <button
@@ -911,9 +913,9 @@ function exportHar() {
           </div>
 
           <!-- Tab Content -->
-          <div class="flex-1 overflow-hidden bg-white dark:bg-[#1e1e20]">
-            <el-scrollbar>
-              <div class="p-4 space-y-6">
+          <div class="min-h-0 flex-1 overflow-hidden bg-white dark:bg-[#1e1e20]">
+            <el-scrollbar :view-class="activeTab === 'Response' ? 'h-full' : ''">
+              <div class="p-4" :class="activeTab === 'Response' ? 'h-full min-h-0 flex flex-col gap-6' : 'space-y-6'">
                 <!-- Headers Tab -->
                 <template v-if="activeTab === 'Headers'">
                   <section>
@@ -1137,12 +1139,12 @@ function exportHar() {
 
                 <!-- Response Tab -->
                 <template v-else-if="activeTab === 'Response'">
-                  <div class="grid gap-3 border border-gray-200 rounded-lg bg-gray-50 p-3 text-sm text-gray-600 md:grid-cols-3 dark:border-gray-800 dark:bg-[#161618] dark:text-gray-400">
+                  <div class="grid shrink-0 gap-3 border border-gray-200 rounded-lg bg-gray-50 p-3 text-sm text-gray-600 md:grid-cols-3 dark:border-gray-800 dark:bg-[#161618] dark:text-gray-400">
                     <div><span class="text-gray-800 font-medium dark:text-gray-200">Size:</span> {{ formatSize(selectedEntry.entry.response?.content?.size ?? selectedEntry.entry.response?.bodySize) }}</div>
                     <div><span class="text-gray-800 font-medium dark:text-gray-200">MIME:</span> {{ getContentTypeLabel(selectedEntry.entry.response?.content?.mimeType) }}</div>
                     <div><span class="text-gray-800 font-medium dark:text-gray-200">Encoding:</span> {{ selectedEntry.entry.response?.content?.encoding ?? '—' }}</div>
                   </div>
-                  <div class="mt-4 flex items-center justify-between gap-3 text-sm">
+                  <div class="flex shrink-0 items-center justify-between gap-3 text-sm">
                     <div class="text-gray-500 dark:text-gray-400">
                       响应内容预览
                     </div>
@@ -1153,14 +1155,18 @@ function exportHar() {
                       复制响应体
                     </button>
                   </div>
-                  <VueJsonPretty
-                    v-if="isJsonLikeContent(selectedEntry.entry.response?.content?.text)"
-                    :data="JSON.parse(selectedEntry.entry.response?.content?.text!)"
-                    theme="dark"
-                    show-icon
-                    virtual
-                  />
-                  <pre v-else class="mt-3 min-h-40 whitespace-pre-wrap break-all border border-gray-200 rounded bg-gray-50 p-3 text-left text-sm text-gray-800 leading-6 dark:border-gray-800 dark:bg-[#141415] dark:text-gray-300">{{ selectedEntry.entry.response?.content?.text || 'No response content' }}</pre>
+                  <div ref="responsePreview" class="min-h-0 flex-1 overflow-hidden">
+                    <VueJsonPretty
+                      v-if="isJsonLikeContent(selectedEntry.entry.response?.content?.text)"
+                      :data="JSON.parse(selectedEntry.entry.response?.content?.text!)"
+                      :height="responsePreviewHeight"
+                      class="h-full"
+                      theme="dark"
+                      show-icon
+                      virtual
+                    />
+                    <pre v-else class="h-full overflow-auto whitespace-pre-wrap break-all border border-gray-200 rounded bg-gray-50 p-3 text-left text-sm text-gray-800 leading-6 dark:border-gray-800 dark:bg-[#141415] dark:text-gray-300">{{ selectedEntry.entry.response?.content?.text || 'No response content' }}</pre>
+                  </div>
                 </template>
 
                 <!-- Timing Tab -->
