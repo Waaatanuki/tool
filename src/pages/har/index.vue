@@ -127,12 +127,14 @@ const resourceEntries = computed(() => new Set(harData.value?.log.entries.filter
 
 function isResourceRequest(entry: HarEntry) {
   const type = typeof entry._resourceType === 'string' ? entry._resourceType.trim().toLowerCase() : ''
-  if (type && type !== 'other')
+  const isXhrOrFetch = type === 'xhr' || type === 'fetch'
+  if (type && type !== 'other' && !isXhrOrFetch)
     return staticResourceTypes.has(type)
 
   const destination = entry.request?.headers?.find(header => header.name?.toLowerCase() === 'sec-fetch-dest')?.value
-  if (destination)
-    return staticResourceTypes.has(destination.trim().toLowerCase())
+  const dest = destination?.trim().toLowerCase()
+  if (dest && dest !== 'empty')
+    return staticResourceTypes.has(dest)
 
   const method = entry.request?.method?.toUpperCase()
   if (method && method !== 'GET' && method !== 'HEAD')
@@ -141,11 +143,16 @@ function isResourceRequest(entry: HarEntry) {
   const contentType = entry.response?.content?.mimeType
     || entry.response?.headers?.find(header => header.name?.toLowerCase() === 'content-type')?.value
   const mime = typeof contentType === 'string' ? contentType.split(';')[0].trim().toLowerCase() : ''
-  if (mime && mime !== 'application/octet-stream')
-    return /^(?:image|audio|video|font)\//.test(mime) || /^(?:text\/(?:css|vtt)|(?:text|application)\/(?:x-)?(?:java|ecma)script|application\/(?:font-woff2?|x-font-[\w-]+|vnd\.ms-fontobject|manifest\+json|wasm))$/.test(mime)
-
   const path = entry.request?.url?.split(/[?#]/, 1)[0] ?? ''
-  return /\.(?:css|m?js|wasm|webmanifest|avif|apng|bmp|gif|ico|jpe?g|png|svgz?|tiff?|webp|eot|otf|tt[cf]|woff2?|aac|flac|m4[av]|mov|mp[34]|og[agv]|opus|wav|webm|vtt)$/i.test(path)
+  const hasResourceExtension = /\.(?:css|m?js|wasm|webmanifest|avif|apng|bmp|gif|ico|jpe?g|png|svgz?|tiff?|webp|eot|otf|tt[cf]|woff2?|aac|flac|m4[av]|mov|mp[34]|og[agv]|opus|wav|webm|vtt)$/i.test(path)
+  // XHR 和 Fetch 也能加载静态文件。要求文件扩展名和 MIME 都是资源类型，以保留普通接口。
+  const hasResourceMime = /^(?:image|audio|video|font)\//.test(mime) || /^(?:text\/(?:css|vtt)|(?:text|application)\/(?:x-)?(?:java|ecma)script|application\/(?:font-woff2?|x-font-[\w-]+|vnd\.ms-fontobject|manifest\+json|wasm))$/.test(mime)
+  if (isXhrOrFetch || dest === 'empty')
+    return hasResourceExtension && hasResourceMime
+  if (mime && mime !== 'application/octet-stream')
+    return hasResourceMime
+
+  return hasResourceExtension
 }
 
 function deleteResourceRequests() {
