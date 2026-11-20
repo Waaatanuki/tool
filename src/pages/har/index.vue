@@ -122,6 +122,46 @@ const selectedEntry = computed(() => {
   return displayEntries.value.find(item => item.id === selectedEntryId.value)
 })
 
+const staticResourceTypes = new Set(['script', 'stylesheet', 'style', 'image', 'imageset', 'font', 'media', 'audio', 'video', 'track', 'texttrack', 'manifest'])
+const resourceEntries = computed(() => new Set(harData.value?.log.entries.filter(isResourceRequest)))
+
+function isResourceRequest(entry: HarEntry) {
+  const type = typeof entry._resourceType === 'string' ? entry._resourceType.trim().toLowerCase() : ''
+  if (type && type !== 'other')
+    return staticResourceTypes.has(type)
+
+  const destination = entry.request?.headers?.find(header => header.name?.toLowerCase() === 'sec-fetch-dest')?.value
+  if (destination)
+    return staticResourceTypes.has(destination.trim().toLowerCase())
+
+  const method = entry.request?.method?.toUpperCase()
+  if (method && method !== 'GET' && method !== 'HEAD')
+    return false
+
+  const contentType = entry.response?.content?.mimeType
+    || entry.response?.headers?.find(header => header.name?.toLowerCase() === 'content-type')?.value
+  const mime = typeof contentType === 'string' ? contentType.split(';')[0].trim().toLowerCase() : ''
+  if (mime && mime !== 'application/octet-stream')
+    return /^(?:image|audio|video|font)\//.test(mime) || /^(?:text\/(?:css|vtt)|(?:text|application)\/(?:x-)?(?:java|ecma)script|application\/(?:font-woff2?|x-font-[\w-]+|vnd\.ms-fontobject|manifest\+json|wasm))$/.test(mime)
+
+  const path = entry.request?.url?.split(/[?#]/, 1)[0] ?? ''
+  return /\.(?:css|m?js|wasm|webmanifest|avif|apng|bmp|gif|ico|jpe?g|png|svgz?|tiff?|webp|eot|otf|tt[cf]|woff2?|aac|flac|m4[av]|mov|mp[34]|og[agv]|opus|wav|webm|vtt)$/i.test(path)
+}
+
+function deleteResourceRequests() {
+  if (!harData.value || !resourceEntries.value.size)
+    return
+
+  const previousSelection = selectedEntry.value?.entry
+  const resources = resourceEntries.value
+  harData.value.log.entries = harData.value.log.entries.filter(entry => !resources.has(entry))
+
+  const retained = displayEntries.value.find(item => item.entry === previousSelection)
+  selectedEntryId.value = retained?.id ?? displayEntries.value[0]?.id ?? null
+  if (!retained)
+    activeTab.value = 'Headers'
+}
+
 function buildEntryId(entry: HarEntry, index: number) {
   return [
     index,
@@ -802,6 +842,12 @@ function exportHar() {
       <div class="flex gap-2">
         <el-button type="primary" @click="selectFile">
           {{ harData ? '重新导入' : '选择文件' }}
+        </el-button>
+        <el-button
+          v-if="harData" type="danger" plain :disabled="!resourceEntries.size"
+          title="删除整个 HAR 中的静态资源请求，包括搜索结果以外的请求" @click="deleteResourceRequests"
+        >
+          删除资源请求（{{ resourceEntries.size }}）
         </el-button>
         <el-button :disabled="!harData" @click="exportHar">
           导出 HAR
